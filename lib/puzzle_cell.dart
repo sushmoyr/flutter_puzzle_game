@@ -5,12 +5,14 @@ class PuzzleCell {
   late int dx;
   late int dy;
   late Color color;
+  late Image image;
 
   PuzzleCell({
     required this.value,
     required this.dx,
     required this.dy,
     required this.color,
+    required this.image,
   });
 
   FractionalOffset get alignment {

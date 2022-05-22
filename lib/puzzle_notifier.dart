@@ -1,6 +1,9 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_puzzle_game/image_splitter.dart';
 
 import 'puzzle_cell.dart';
 
@@ -16,6 +19,7 @@ class PuzzleNotifier extends ChangeNotifier {
   List<List<int>> board = List.empty();
   List<PuzzleCell> cells = List.empty();
   int moves = 0;
+  ImageSplitter _splitter = ImageSplitter();
 
   GameState _state = GameState.idle;
   GameState get state => _state;
@@ -27,11 +31,18 @@ class PuzzleNotifier extends ChangeNotifier {
   void start({int shuffle = 1}) async {
     state = GameState.loading;
 
+    final ByteData bytes = await rootBundle.load('asset/sample.jpg');
+    final Uint8List list = bytes.buffer.asUint8List();
+
+    List<Uint8List> images = _splitter.splitImage({'input': list, 'size': 3});
+
     for (int i = 0; i < shuffle; i++) {
       board = createRandomBoard();
       cells = [];
-      createPuzzleCellData(board);
-      await Future.delayed(PuzzleNotifier.animationDuration);
+      createPuzzleCellData(board, images);
+      print('Shuffled');
+      await Future.delayed(Duration(seconds: 1));
+      notifyListeners();
     }
 
     state = GameState.running;
@@ -73,7 +84,7 @@ class PuzzleNotifier extends ChangeNotifier {
       ..dy = b;
   }
 
-  void createPuzzleCellData(List<List<int>> box) {
+  void createPuzzleCellData(List<List<int>> box, List<Uint8List> images) {
     // print('creating cells from: ');
     // print(box);
     int count = 0;
@@ -83,6 +94,7 @@ class PuzzleNotifier extends ChangeNotifier {
           cells.add(
             PuzzleCell(
                 value: box[i][j],
+                image: Image.memory(images[count]),
                 dx: i,
                 dy: j,
                 color: Colors.primaries[count++]),
@@ -137,10 +149,14 @@ class PuzzleNotifier extends ChangeNotifier {
 
     if (mismatched == 0) {
       //print(mismatched);
-      onGameFinished?.call(moves);
-      state = GameState.finished;
-      notifyListeners();
+      stopGame();
     }
+  }
+
+  void stopGame() {
+    onGameFinished?.call(moves);
+    state = GameState.finished;
+    notifyListeners();
   }
 
   void reset() {

@@ -1,9 +1,14 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_puzzle_game/image_splitter.dart';
 import 'package:flutter_puzzle_game/puzzle_notifier.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'puzzle_cell.dart';
+import 'tuple.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -19,12 +24,22 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     notifier.addListener(() {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     });
 
     notifier.onGameFinished = (moves) {
       print('G A M E F I N I S H E D !!!');
     };
+  }
+
+  Uint8List? image;
+
+  @override
+  void dispose() {
+    super.dispose();
+    notifier.dispose();
   }
 
   @override
@@ -33,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Center(
               child: Text(
                 'Puzzle Time...',
@@ -48,18 +63,19 @@ class _HomeScreenState extends State<HomeScreen> {
               double maxHeight = constraints.maxHeight;
 
               double dimension = min(maxWidth, maxHeight);
+              dimension = dimension - dimension % 9;
 
               switch (notifier.state) {
                 case GameState.idle:
                   return Container();
                 case GameState.loading:
                   return PuzzleWidget(
-                    size: Size.square(dimension),
+                    dimension: dimension,
                     notifier: notifier,
                   );
                 case GameState.running:
                   return PuzzleWidget(
-                    size: Size.square(dimension),
+                    dimension: dimension,
                     notifier: notifier,
                   );
                 case GameState.finished:
@@ -84,17 +100,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
               }
-
-              return (notifier.state == GameState.idle)
-                  ? Container()
-                  : PuzzleWidget(
-                      size: Size.square(dimension),
-                      notifier: notifier,
-                    );
             }),
           ),
           Expanded(
-            flex: 4,
+            flex: 3,
             child: Center(
               child: (notifier.state == GameState.idle)
                   ? ElevatedButton(
@@ -106,7 +115,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   : (notifier.state == GameState.loading)
                       ? Text('Starting Game...!!!')
                       : (notifier.state == GameState.running)
-                          ? Text('Moves: ${notifier.moves}')
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('Moves: ${notifier.moves}'),
+                                OutlinedButton(
+                                  onPressed: notifier.stopGame,
+                                  child: Text('Stop Game'),
+                                ),
+                              ],
+                            )
                           : ElevatedButton(
                               child: Text('Reset'),
                               onPressed: () {
@@ -122,10 +140,11 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class PuzzleWidget extends StatefulWidget {
-  const PuzzleWidget({Key? key, required this.size, required this.notifier})
+  const PuzzleWidget(
+      {Key? key, required this.dimension, required this.notifier})
       : super(key: key);
 
-  final Size size;
+  final double dimension;
   final PuzzleNotifier notifier;
 
   @override
@@ -141,7 +160,9 @@ class _PuzzleWidgetState extends State<PuzzleWidget> {
 
     puzzleNotifier = widget.notifier;
     puzzleNotifier.addListener(() {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     });
 
     // board = createRandomBoard();
@@ -151,8 +172,7 @@ class _PuzzleWidgetState extends State<PuzzleWidget> {
 
   @override
   Widget build(BuildContext context) {
-    int count = 0;
-    double cellSize = (widget.size.width / 3).floorToDouble();
+    double cellSize = (widget.dimension / 3).floorToDouble();
 
     //print('Total area: ${widget.size}');
     //print('cell size: $cellSize');
@@ -163,36 +183,47 @@ class _PuzzleWidgetState extends State<PuzzleWidget> {
     //print(value.toString());
     //}
 
-    return SizedBox.fromSize(
-      size: widget.size,
-      child: Stack(
-        children: [
-          for (var cell in puzzleNotifier.cells)
-            GestureDetector(
-              onTap: () {
-                // print('Tapped: ${cell.dx}, ${cell.dy}');
-                puzzleNotifier.moveTile(cell.dx, cell.dy);
-              },
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.ease,
-                onEnd: () {
-                  puzzleNotifier.checkFinish();
+    return Center(
+      child: SizedBox.square(
+        dimension: widget.dimension,
+        child: Stack(
+          children: [
+            for (var cell in puzzleNotifier.cells)
+              GestureDetector(
+                onTap: () {
+                  // print('Tapped: ${cell.dx}, ${cell.dy}');
+                  puzzleNotifier.moveTile(cell.dx, cell.dy);
                 },
-                alignment: cell.alignment,
-                child: Container(
-                  width: cellSize,
-                  height: cellSize,
-                  color: cell.color,
-                  alignment: Alignment.center,
-                  child: Text(
-                    cell.value.toString(),
-                    style: Theme.of(context).textTheme.headlineLarge,
+                child: AnimatedAlign(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.ease,
+                  onEnd: () {
+                    puzzleNotifier.checkFinish();
+                  },
+                  alignment: cell.alignment,
+                  child: Container(
+                    width: cellSize,
+                    height: cellSize,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(4.0),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    // decoration: BoxDecoration(
+                    //   color: cell.color,
+                    //   image: DecorationImage(
+                    //     image: MemoryImage(
+                    //       Uint8List.fromList(cell.image),
+                    //     ),
+                    //   ),
+                    // ),
+                    child: cell.image,
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
